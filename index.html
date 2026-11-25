@@ -1,0 +1,709 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Tarapirohe's 2D Adventure</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <style>
+        body, html {
+            margin: 0;
+            padding: 0;
+            width: 100%;
+            height: 100%;
+            overflow: hidden;
+            background-color: #87CEEB; /* Sky blue background */
+            font-family: 'Inter', sans-serif;
+            touch-action: none;
+        }
+        #gameCanvas {
+            display: block;
+            width: 100%;
+            height: 100%;
+        }
+        .ui-layer {
+            position: absolute;
+            top: 0; left: 0;
+            width: 100%; height: 100%;
+            pointer-events: none;
+            display: flex;
+            flex-direction: column;
+            z-index: 10;
+        }
+        .screen-overlay {
+            display: none;
+            position: absolute;
+            top: 0; left: 0; right: 0; bottom: 0;
+            background: rgba(15, 23, 42, 0.85);
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            z-index: 50;
+            text-align: center;
+            pointer-events: auto;
+            backdrop-filter: blur(4px);
+        }
+        .active-overlay {
+            display: flex !important;
+        }
+        /* Mobile Controls */
+        #mobile-controls {
+            display: none;
+            position: absolute;
+            bottom: 20px;
+            left: 0;
+            width: 100%;
+            padding: 0 20px;
+            justify-content: space-between;
+            pointer-events: none;
+            box-sizing: border-box;
+        }
+        @media (max-width: 768px) {
+            #mobile-controls { display: flex; }
+        }
+        .control-group {
+            display: flex;
+            gap: 10px;
+            pointer-events: auto;
+        }
+        .control-btn {
+            background: rgba(255, 255, 255, 0.3);
+            border: 2px solid rgba(255, 255, 255, 0.6);
+            border-radius: 50%;
+            width: 60px;
+            height: 60px;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            color: white;
+            font-size: 24px;
+            user-select: none;
+            box-shadow: 0 4px 6px rgba(0,0,0,0.3);
+        }
+        .control-btn:active { background: rgba(255, 255, 255, 0.6); }
+    </style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<!-- UI Layer -->
+<div class="ui-layer">
+    <div class="flex justify-between p-4" id="hud">
+        <div class="flex gap-4">
+            <div class="bg-blue-900 bg-opacity-80 border-2 border-blue-400 text-white px-6 py-3 rounded-full font-bold text-xl flex items-center gap-3 shadow-[0_0_10px_rgba(96,165,250,0.5)]">
+                <div class="w-5 h-5 bg-blue-400 rounded-full animate-pulse"></div> 
+                <span id="fish-count">0 / 3 Fish</span>
+            </div>
+            <div class="bg-indigo-900 bg-opacity-80 border-2 border-indigo-400 text-white px-6 py-3 rounded-full font-bold text-xl flex items-center gap-3 shadow-[0_0_10px_rgba(99,102,241,0.5)]">
+                <span id="level-display">Level 1 / 15</span>
+            </div>
+        </div>
+        <div class="bg-gray-900 bg-opacity-70 text-white px-4 py-2 rounded-xl font-bold text-sm hidden sm:block border border-gray-600">
+            Arrow Keys / WASD to Move & Jump<br>
+            Double tap Jump to Double Jump!<br>
+            Hold Up / W to Glide!<br>
+            Collect 3 fish to unlock the nest!
+        </div>
+    </div>
+    
+    <!-- Mobile Controls -->
+    <div id="mobile-controls">
+        <div class="control-group">
+            <div class="control-btn" id="btn-left">◀</div>
+            <div class="control-btn" id="btn-right">▶</div>
+        </div>
+        <div class="control-group">
+            <div class="control-btn" id="btn-up">▲</div>
+        </div>
+    </div>
+</div>
+
+<!-- Start Screen -->
+<div id="start-screen" class="screen-overlay active-overlay">
+    <h1 class="text-5xl md:text-6xl font-extrabold mb-4 text-transparent bg-clip-text bg-gradient-to-b from-white to-blue-300 drop-shadow-lg">Tarapirohe's 2D Quest</h1>
+    <p class="mb-6 text-lg max-w-md text-gray-200">
+        Play as the Black-fronted Tern!<br><br>
+        Run and jump through the level, collect all <strong>3 fish</strong>, and reach the nest safely.<br><br>
+        <span class="text-red-400 font-bold">DODGE THE PESTS:</span> Stoats, Cats, and Rats!
+    </p>
+    <button id="start-btn" class="bg-blue-600 hover:bg-blue-500 text-white font-bold py-3 px-10 rounded-full shadow-[0_4px_14px_0_rgba(37,99,235,0.39)] text-xl transform transition hover:scale-105 border-2 border-blue-400">Start Game</button>
+</div>
+
+<!-- Game Over Screen -->
+<div id="game-over-screen" class="screen-overlay">
+    <h1 class="text-6xl font-black mb-4 text-red-500 drop-shadow-[0_0_10px_rgba(239,68,68,0.8)]">GAME OVER</h1>
+    <p id="death-reason" class="mb-8 text-2xl text-gray-200 font-semibold">You were caught by a pest!</p>
+    <button id="restart-btn" class="bg-gray-800 hover:bg-gray-700 border-2 border-red-500 text-white font-bold py-3 px-10 rounded-full shadow-lg text-xl transform transition hover:scale-105">Try Again</button>
+</div>
+
+<!-- Win Screen -->
+<div id="win-screen" class="screen-overlay">
+    <h1 id="win-title" class="text-6xl font-black mb-4 text-yellow-400 drop-shadow-[0_0_15px_rgba(250,204,21,0.8)]">VICTORY!</h1>
+    <p id="win-text" class="mb-8 text-2xl text-gray-200 font-semibold">You reached the nest with all 3 fish!</p>
+    <button id="play-again-btn" class="bg-green-600 hover:bg-green-500 border-2 border-green-400 text-white font-bold py-3 px-10 rounded-full shadow-lg text-xl transform transition hover:scale-105">Play Again</button>
+</div>
+
+<!-- Toast Message -->
+<div id="toast" class="absolute top-24 left-1/2 transform -translate-x-1/2 bg-yellow-500 text-black font-extrabold px-8 py-3 rounded-full shadow-xl transition-opacity duration-300 opacity-0 pointer-events-none z-40 text-lg border-2 border-yellow-600">
+    Message
+</div>
+
+<script>
+const canvas = document.getElementById('gameCanvas');
+const ctx = canvas.getContext('2d');
+
+let cw = window.innerWidth;
+let ch = window.innerHeight;
+canvas.width = cw;
+canvas.height = ch;
+
+window.addEventListener('resize', () => {
+    cw = window.innerWidth;
+    ch = window.innerHeight;
+    canvas.width = cw;
+    canvas.height = ch;
+});
+
+// --- Game State ---
+let gameState = 'start'; // start, playing, gameover, win
+let fishCollected = 0;
+let currentLevel = 1;
+let cameraX = 0;
+let animationId;
+
+// --- DOM Elements ---
+const uiFishCount = document.getElementById('fish-count');
+const uiLevelDisplay = document.getElementById('level-display');
+const toastEl = document.getElementById('toast');
+const winTitle = document.getElementById('win-title');
+const winText = document.getElementById('win-text');
+
+// --- Input ---
+const keys = { right: false, left: false, up: false, upJustPressed: false };
+
+window.addEventListener('keydown', (e) => {
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = true;
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = true;
+    if (e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Space') {
+        if (!keys.up) keys.upJustPressed = true;
+        keys.up = true;
+    }
+});
+
+window.addEventListener('keyup', (e) => {
+    if (e.code === 'ArrowRight' || e.code === 'KeyD') keys.right = false;
+    if (e.code === 'ArrowLeft' || e.code === 'KeyA') keys.left = false;
+    if (e.code === 'ArrowUp' || e.code === 'KeyW' || e.code === 'Space') keys.up = false;
+});
+
+// Touch Controls
+const bindTouch = (id, keyName) => {
+    const el = document.getElementById(id);
+    if (!el) return;
+    const press = (e) => { 
+        e.preventDefault(); 
+        if (keyName === 'up' && !keys.up) keys.upJustPressed = true;
+        keys[keyName] = true; 
+    };
+    const release = (e) => { e.preventDefault(); keys[keyName] = false; };
+    el.addEventListener('touchstart', press, {passive: false});
+    el.addEventListener('touchend', release, {passive: false});
+    el.addEventListener('mousedown', press);
+    el.addEventListener('mouseup', release);
+    el.addEventListener('mouseleave', release);
+};
+bindTouch('btn-left', 'left');
+bindTouch('btn-right', 'right');
+bindTouch('btn-up', 'up');
+
+// UI Listeners
+document.getElementById('start-btn').addEventListener('click', () => { currentLevel = 1; startGame(); });
+document.getElementById('restart-btn').addEventListener('click', startGame);
+document.getElementById('play-again-btn').addEventListener('click', () => {
+    if (currentLevel < 15 && gameState === 'win') {
+        currentLevel++;
+        startGame();
+    } else {
+        currentLevel = 1;
+        startGame();
+    }
+});
+
+function showToast(msg) {
+    toastEl.innerText = msg;
+    toastEl.style.opacity = '1';
+    setTimeout(() => { toastEl.style.opacity = '0'; }, 2000);
+}
+
+// --- Entities ---
+const GRAVITY = 0.6;
+const FRICTION = 0.8;
+
+class Player {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 40;
+        this.height = 40;
+        this.vx = 0;
+        this.vy = 0;
+        this.speed = 5;
+        this.jumpPower = -12;
+        this.jumps = 0;
+        this.grounded = false;
+        this.facingRight = true;
+    }
+
+    update() {
+        // Horizontal Movement
+        if (keys.right) {
+            this.vx = this.speed;
+            this.facingRight = true;
+        } else if (keys.left) {
+            this.vx = -this.speed;
+            this.facingRight = false;
+        } else {
+            this.vx *= FRICTION;
+        }
+
+        // Double Jumping
+        if (keys.upJustPressed && this.jumps < 2) {
+            this.vy = this.jumpPower;
+            this.jumps++;
+            this.grounded = false;
+        }
+        keys.upJustPressed = false; // consume the press
+
+        // Apply Gravity & Gliding
+        if (!this.grounded && keys.up && this.vy > 0) {
+            this.vy += GRAVITY * 0.2; // Reduced gravity while gliding
+            if (this.vy > 2.5) this.vy = 2.5; // Cap maximum fall speed while gliding
+        } else {
+            this.vy += GRAVITY; // Normal gravity
+        }
+
+        // Move horizontally and check collisions
+        this.x += this.vx;
+        this.checkCollisions(true);
+
+        // Move vertically and check collisions
+        this.y += this.vy;
+        this.grounded = false;
+        this.checkCollisions(false);
+
+        // Death by falling
+        if (this.y > ch + 200) {
+            endGame("The Tarapirohe fell out of bounds!");
+        }
+    }
+
+    checkCollisions(isHorizontal) {
+        for (let plat of platforms) {
+            if (this.x < plat.x + plat.width &&
+                this.x + this.width > plat.x &&
+                this.y < plat.y + plat.height &&
+                this.y + this.height > plat.y) {
+                
+                if (isHorizontal) {
+                    if (this.vx > 0) this.x = plat.x - this.width;
+                    else if (this.vx < 0) this.x = plat.x + plat.width;
+                    this.vx = 0;
+                } else {
+                    if (this.vy > 0) {
+                        this.y = plat.y - this.height;
+                        this.grounded = true;
+                        this.jumps = 0; // Reset jumps when landing
+                    } else if (this.vy < 0) {
+                        this.y = plat.y + plat.height;
+                    }
+                    this.vy = 0;
+                }
+            }
+        }
+    }
+
+    draw(ctx) {
+        ctx.save();
+        ctx.translate(this.x + this.width/2, this.y + this.height/2);
+        if (!this.facingRight) ctx.scale(-1, 1);
+        ctx.translate(-this.width/2, -this.height/2);
+
+        // Body (Greyish white)
+        ctx.fillStyle = '#E5E7EB';
+        ctx.beginPath();
+        ctx.ellipse(20, 25, 20, 15, 0, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Head
+        ctx.beginPath();
+        ctx.arc(30, 15, 12, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Black Cap (Tarapirohe distinct feature)
+        ctx.fillStyle = '#111827';
+        ctx.beginPath();
+        ctx.arc(30, 15, 12, Math.PI, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(18, 12, 24, 6);
+
+        // Orange Bill
+        ctx.fillStyle = '#F97316';
+        ctx.beginPath();
+        ctx.moveTo(40, 15);
+        ctx.lineTo(55, 18);
+        ctx.lineTo(40, 21);
+        ctx.fill();
+
+        // Eye
+        ctx.fillStyle = 'white';
+        ctx.beginPath();
+        ctx.arc(32, 12, 2, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Wing
+        ctx.fillStyle = '#9CA3AF';
+        ctx.beginPath();
+        ctx.ellipse(15, 25, 12, 6, -Math.PI / 6, 0, Math.PI * 2);
+        ctx.fill();
+
+        // Tail
+        ctx.fillStyle = '#4B5563';
+        ctx.beginPath();
+        ctx.moveTo(5, 25);
+        ctx.lineTo(-10, 20);
+        ctx.lineTo(-5, 30);
+        ctx.fill();
+
+        ctx.restore();
+    }
+}
+
+class Platform {
+    constructor(x, y, w, h) {
+        this.x = x;
+        this.y = y;
+        this.width = w;
+        this.height = h;
+    }
+    draw(ctx) {
+        // Dirt body
+        ctx.fillStyle = '#78350f'; 
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+        // Grass top
+        ctx.fillStyle = '#4ade80'; 
+        ctx.fillRect(this.x, this.y, this.width, 10);
+    }
+}
+
+class Enemy {
+    constructor(x, y, w, h, speed, travelDist, name) {
+        this.startX = x;
+        this.x = x;
+        this.y = y;
+        this.width = w;
+        this.height = h;
+        this.speed = speed;
+        this.travelDist = travelDist;
+        this.dir = 1;
+        this.name = name;
+    }
+    update() {
+        this.x += this.speed * this.dir;
+        if (this.x > this.startX + this.travelDist) {
+            this.x = this.startX + this.travelDist;
+            this.dir = -1;
+        } else if (this.x < this.startX) {
+            this.x = this.startX;
+            this.dir = 1;
+        }
+
+        // Collision with player
+        if (player.x < this.x + this.width - 5 &&
+            player.x + player.width > this.x + 5 &&
+            player.y < this.y + this.height - 5 &&
+            player.y + player.height > this.y + 5) {
+            endGame(`Caught by a ${this.name}!`);
+        }
+    }
+    draw(ctx) {
+        ctx.save();
+        
+        // Red glowing aura
+        ctx.shadowColor = 'red';
+        ctx.shadowBlur = 15;
+        
+        // Body
+        ctx.fillStyle = '#ef4444'; // Red block for enemy
+        ctx.fillRect(this.x, this.y, this.width, this.height);
+        
+        // Eyes
+        ctx.shadowBlur = 0;
+        ctx.fillStyle = 'black';
+        let eyeOffsetX = this.dir === 1 ? 20 : 5;
+        ctx.fillRect(this.x + eyeOffsetX, this.y + 10, 5, 5);
+        ctx.fillRect(this.x + eyeOffsetX + 10, this.y + 10, 5, 5);
+        
+        // Label
+        ctx.fillStyle = '#ffb3b3';
+        ctx.font = 'bold 12px Inter';
+        ctx.textAlign = 'center';
+        ctx.fillText(this.name.toUpperCase(), this.x + this.width/2, this.y - 10);
+        
+        ctx.restore();
+    }
+}
+
+class Fish {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 24;
+        this.height = 24;
+        this.collected = false;
+        this.bobOffset = Math.random() * Math.PI * 2;
+    }
+    update(time) {
+        if (this.collected) return;
+        
+        // Bobbing animation
+        this.drawY = this.y + Math.sin(time * 0.005 + this.bobOffset) * 5;
+
+        // Collision
+        if (player.x < this.x + this.width &&
+            player.x + player.width > this.x &&
+            player.y < this.drawY + this.height &&
+            player.y + player.height > this.drawY) {
+            this.collected = true;
+            fishCollected++;
+            uiFishCount.innerText = `${fishCollected} / 3 Fish`;
+            showToast("Fish collected!");
+        }
+    }
+    draw(ctx) {
+        if (this.collected) return;
+        ctx.save();
+        ctx.translate(this.x + this.width/2, this.drawY + this.height/2);
+        
+        // Fish shape
+        ctx.fillStyle = '#3b82f6';
+        ctx.shadowColor = '#60a5fa';
+        ctx.shadowBlur = 10;
+        
+        ctx.beginPath();
+        ctx.ellipse(0, 0, 12, 6, 0, 0, Math.PI*2);
+        ctx.moveTo(-10, 0);
+        ctx.lineTo(-16, -6);
+        ctx.lineTo(-16, 6);
+        ctx.fill();
+
+        ctx.restore();
+    }
+}
+
+class Nest {
+    constructor(x, y) {
+        this.x = x;
+        this.y = y;
+        this.width = 80;
+        this.height = 40;
+    }
+    update() {
+        if (player.x < this.x + this.width &&
+            player.x + player.width > this.x &&
+            player.y < this.y + this.height &&
+            player.y + player.height > this.y) {
+            
+            if (fishCollected >= 3) {
+                winLevel();
+            } else {
+                // Bounce back
+                player.vx = -10;
+                showToast(`Need ${3 - fishCollected} more fish!`);
+            }
+        }
+    }
+    draw(ctx) {
+        ctx.save();
+        
+        // Eggs
+        ctx.fillStyle = '#d1d5db';
+        ctx.beginPath(); ctx.arc(this.x + 25, this.y + 10, 8, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(this.x + 40, this.y + 5, 8, 0, Math.PI*2); ctx.fill();
+        ctx.beginPath(); ctx.arc(this.x + 55, this.y + 12, 8, 0, Math.PI*2); ctx.fill();
+
+        // Nest bowl
+        ctx.fillStyle = '#8b5a2b';
+        ctx.beginPath();
+        ctx.arc(this.x + this.width/2, this.y + 15, this.width/2, 0, Math.PI, false);
+        ctx.fill();
+        
+        // Label
+        ctx.fillStyle = '#fef08a';
+        ctx.font = 'bold 16px Inter';
+        ctx.textAlign = 'center';
+        ctx.shadowColor = 'black';
+        ctx.shadowBlur = 4;
+        ctx.fillText("NEST", this.x + this.width/2, this.y - 20);
+
+        ctx.restore();
+    }
+}
+
+// --- Game Objects ---
+let player;
+let platforms = [];
+let enemies = [];
+let fishes = [];
+let nest;
+
+function buildLevel() {
+    platforms = [];
+    enemies = [];
+    fishes = [];
+    
+    // Start area
+    platforms.push(new Platform(0, ch - 100, 400, 200));
+    
+    let curX = 400;
+    let numPlatforms = 4 + Math.floor(currentLevel / 2); // Level grows longer as it progresses
+    
+    // Pick 3 distinct platforms for the 3 fish
+    let fish1 = 1;
+    let fish2 = Math.floor(numPlatforms / 2);
+    let fish3 = numPlatforms - 1;
+    if (fish2 === fish1) fish2++;
+    if (fish3 === fish2) fish3++;
+    let fishIndices = [fish1, fish2, fish3];
+    
+    for (let i = 1; i <= numPlatforms; i++) {
+        let gap = 50 + currentLevel * 12 + Math.random() * 80;
+        if (gap > 350) gap = 350; // max jumpable/glidable gap
+        
+        let pWidth = 150 + Math.random() * 300;
+        let pY = ch - 100 - Math.random() * (100 + currentLevel * 10);
+        if (pY < 150) pY = 150; // cap max height
+        
+        platforms.push(new Platform(curX + gap, pY, pWidth, ch));
+        
+        // Enemies
+        if (pWidth > 150 && i !== numPlatforms) {
+            let numEnemies = Math.random() > 0.5 ? 1 : Math.floor(currentLevel / 5);
+            if (numEnemies > 0) {
+                let enemyTypes = ['Stoat', 'Rat', 'Cat'];
+                let type = enemyTypes[Math.floor(Math.random() * enemyTypes.length)];
+                let speed = 1.0 + currentLevel * 0.15;
+                enemies.push(new Enemy(curX + gap + 20, pY - 40, 40, 40, speed, pWidth - 60, type));
+            }
+        }
+        
+        // Fish
+        if (fishIndices.includes(i)) {
+            fishes.push(new Fish(curX + gap + pWidth / 2 - 12, pY - 60 - Math.random() * 80));
+        }
+        
+        curX += gap + pWidth;
+    }
+    
+    // Final stretch to nest
+    platforms.push(new Platform(curX + 100, ch - 150, 400, 250));
+    nest = new Nest(curX + 250, ch - 190);
+}
+
+// --- Loop & State ---
+function startGame() {
+    document.getElementById('start-screen').classList.remove('active-overlay');
+    document.getElementById('game-over-screen').classList.remove('active-overlay');
+    document.getElementById('win-screen').classList.remove('active-overlay');
+    
+    fishCollected = 0;
+    uiFishCount.innerText = `0 / 3 Fish`;
+    uiLevelDisplay.innerText = `Level ${currentLevel} / 15`;
+    
+    player = new Player(100, ch - 150);
+    buildLevel();
+    cameraX = 0;
+    
+    gameState = 'playing';
+    
+    if(animationId) cancelAnimationFrame(animationId);
+    gameLoop(0);
+}
+
+function endGame(reason) {
+    if (gameState !== 'playing') return;
+    gameState = 'gameover';
+    document.getElementById('death-reason').innerText = reason;
+    document.getElementById('game-over-screen').classList.add('active-overlay');
+}
+
+function winLevel() {
+    if (gameState !== 'playing') return;
+    gameState = 'win';
+    document.getElementById('win-screen').classList.add('active-overlay');
+    
+    if (currentLevel < 15) {
+        winTitle.innerText = "LEVEL COMPLETE!";
+        winText.innerText = `You beat Level ${currentLevel}!`;
+        document.getElementById('play-again-btn').innerText = "Next Level";
+    } else {
+        winTitle.innerText = "VICTORY!";
+        winText.innerText = "You reached the nest on all 15 levels!";
+        document.getElementById('play-again-btn').innerText = "Play Again";
+    }
+}
+
+function gameLoop(time) {
+    if (gameState !== 'playing') return;
+    animationId = requestAnimationFrame(gameLoop);
+
+    // Update
+    player.update();
+    enemies.forEach(e => e.update());
+    fishes.forEach(f => f.update(time));
+    nest.update();
+
+    // Camera follow (center player on screen, but clamp to left side)
+    let targetCameraX = player.x - cw / 3;
+    if (targetCameraX < 0) targetCameraX = 0;
+    cameraX += (targetCameraX - cameraX) * 0.1; // smooth follow
+
+    // Draw
+    ctx.clearRect(0, 0, cw, ch);
+    
+    // Draw clouds (parallax background)
+    ctx.fillStyle = 'rgba(255,255,255,0.4)';
+    for(let i=0; i<10; i++) {
+        let cx = ((i * 300) - (cameraX * 0.2)) % (cw + 300);
+        if(cx < -200) cx += cw + 400;
+        ctx.beginPath();
+        ctx.arc(cx, 100 + (i%3)*50, 40, 0, Math.PI*2);
+        ctx.arc(cx+40, 100 + (i%3)*50, 50, 0, Math.PI*2);
+        ctx.arc(cx+80, 100 + (i%3)*50, 40, 0, Math.PI*2);
+        ctx.fill();
+    }
+
+    ctx.save();
+    ctx.translate(-cameraX, 0);
+
+    // Draw world entities
+    platforms.forEach(p => p.draw(ctx));
+    nest.draw(ctx);
+    fishes.forEach(f => f.draw(ctx));
+    enemies.forEach(e => e.draw(ctx));
+    player.draw(ctx);
+
+    ctx.restore();
+}
+
+// Initial draw before start
+buildLevel();
+player = new Player(100, ch - 150);
+ctx.fillStyle = '#4ade80';
+ctx.fillRect(0, ch - 100, cw, 100);
+player.draw(ctx);
+
+</script>
+</body>
+</html>
